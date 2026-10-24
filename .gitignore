@@ -1,0 +1,23 @@
+# Credentials & Sensitive Data
+credentials_web.json
+*.pem
+*.key
+*.crt
+
+# Runtime & Temporary Files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.DS_Store
+Thumbs.db
+
+# Environment & Local Config
+.env
+.env.local
+*.py
+*.bak
+*.tmp
+stan_projektu/
+Tymczasowe/

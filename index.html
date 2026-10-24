@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Life Coach - Osobiste Centrum Dowodzenia</title>
+  
+  <!-- Web App Manifest & Service Worker Meta -->
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Life Coach">
+  <link rel="apple-touch-icon" href="icon-192.png">
+
+  <!-- Google Fonts & Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet" />
+  
+  <!-- Google GSI SDK (Non-blocking) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  
+  <!-- Stylesheets -->
+  <link rel="stylesheet" href="style.css?v=28">
+</head>
+<body>
+
+  <!-- Main Container -->
+  <div class="app-container">
+    
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-left">
+        <h1 class="brand-title">Life Coach</h1>
+        <p class="current-date" id="current-date-el">Wczytywanie...</p>
+        <span class="app-version" title="Wersja kodu aplikacji">v28</span>
+      </div>
+      <div class="header-right">
+        <!-- Streak Display -->
+        <div class="streak-card" id="streak-card-el" title="Twój aktualny streak! Zrób chociaż jedno zadanie dziennie, by podtrzymać ogień.">
+          <span class="streak-fire-icon">🔥</span>
+          <div class="streak-details">
+            <span class="streak-number" id="streak-number-el">0</span>
+            <span class="streak-label">Dni Serii</span>
+          </div>
+        </div>
+        <!-- Shield Badges -->
+        <div class="shields-container" id="shields-container-el" title="Tarcze Serii (chronią przed wyzerowaniem). Zdobądź tarczę co 7 dni serii.">
+          <div class="shield-badge empty" id="shield-1"><span class="material-symbols-outlined">shield</span></div>
+          <div class="shield-badge empty" id="shield-2"><span class="material-symbols-outlined">shield</span></div>
+          <div class="shield-badge empty" id="shield-3"><span class="material-symbols-outlined">shield</span></div>
+        </div>
+        <!-- Settings Button -->
+        <button class="icon-btn" id="open-settings-btn" title="Ustawienia i Synchronizacja">
+          <span class="material-symbols-outlined">settings</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Navigation Tabs (Home = Zadania, Podstrona = Trener RPG) -->
+    <nav class="app-nav-tabs" role="tablist">
+      <button class="nav-tab active" id="tab-tasks-btn" role="tab" aria-selected="true" data-target="view-tasks">
+        <span class="material-symbols-outlined">checklist</span>
+        <span>Lista Zadań (Home)</span>
+        <span class="nav-tab-badge" id="tasks-count-badge">0</span>
+      </button>
+      <button class="nav-tab" id="tab-coach-btn" role="tab" aria-selected="false" data-target="view-coach">
+        <span class="material-symbols-outlined">psychology</span>
+        <span>Trener RPG</span>
+        <span class="streak-pill-mini">🔥 <span id="nav-streak-val">0</span></span>
+      </button>
+    </nav>
+
+    <!-- ====================================================================
+         VIEW 1: GŁÓWNY EKRAN (HOME) — LISTA ZADAŃ (Offline-First pod magazyn)
+         ==================================================================== -->
+    <main class="app-view" id="view-tasks">
+      
+      <!-- Top Action Bar -->
+      <div class="tasks-action-bar">
+        <div class="tasks-status-pill">
+          <span class="status-dot online" id="task-sync-dot"></span>
+          <span id="task-sync-text">Lokalnie (Offline Gotowe)</span>
+        </div>
+        <div class="tasks-quick-buttons">
+          <button class="btn btn-primary btn-sm" id="btn-add-task">
+            <span class="material-symbols-outlined">add</span> Nowe Zadanie
+          </button>
+          <button class="btn btn-secondary btn-sm" id="btn-sync-tasks" title="Pobierz lub wyślij zadania użytkownika (tasks_uzytkownika.md)">
+            <span class="material-symbols-outlined">sync</span> Sync Zadań
+          </button>
+          <button class="btn btn-outline btn-sm" id="btn-backup-tasks" title="Kopia zapasowa / Eksport zadań">
+            <span class="material-symbols-outlined">dataset</span> Kopia / Raw
+          </button>
+        </div>
+      </div>
+
+      <!-- Active Hero Card: Zasada Jednego 🔵 -->
+      <section class="active-focus-card" id="active-task-hero">
+        <div class="focus-card-header">
+          <span class="focus-badge">🔵 W TOKU (Zasada jednego 🔵)</span>
+          <span class="focus-project" id="hero-task-project">-</span>
+        </div>
+        <div class="focus-card-body">
+          <h3 class="focus-title" id="hero-task-title">Brak aktywnego zadania</h3>
+          <p class="focus-desc" id="hero-task-desc">Wybierz jedno zadanie z listy poniżej i kliknij „Rozpocznij (🔵)”, aby skupić się na nim w 100%.</p>
+        </div>
+        <div class="focus-card-actions" id="hero-task-actions">
+          <!-- Dynamically populated buttons -->
+        </div>
+      </section>
+
+      <!-- Filter & Search Toolbar -->
+      <div class="tasks-filter-bar">
+        <div class="filter-chips">
+          <button class="chip active" data-filter="all">Wszystkie (<span id="count-all">0</span>)</button>
+          <button class="chip chip-blue" data-filter="in_progress">🔵 W toku (<span id="count-in_progress">0</span>)</button>
+          <button class="chip chip-red" data-filter="todo">🔴 Do zrobienia (<span id="count-todo">0</span>)</button>
+          <button class="chip chip-yellow" data-filter="pending">🟡 Oczekuje (<span id="count-pending">0</span>)</button>
+          <button class="chip chip-green" data-filter="done">🟢 Zrobione (<span id="count-done">0</span>)</button>
+        </div>
+        <div class="search-input-wrapper">
+          <span class="material-symbols-outlined search-icon">search</span>
+          <input type="text" id="tasks-search-input" placeholder="Szukaj zadań...">
+        </div>
+      </div>
+
+      <!-- Tasks Sections Grouped by Protocol of Lights -->
+      <div class="tasks-sections-container">
+        
+        <!-- 🔴 DO ZROBIENIA -->
+        <div class="task-section" id="section-todo">
+          <div class="task-section-header">
+            <h3>🔴 Do Zrobienia <span class="badge-count" id="badge-todo-count">0</span></h3>
+          </div>
+          <div class="task-items-list" id="list-todo">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- 🟡 OCZEKUJE NA OCENĘ / ZABLOKOWANE -->
+        <div class="task-section" id="section-pending">
+          <div class="task-section-header">
+            <h3>🟡 Oczekuje na ocenę / Zablokowane <span class="badge-count" id="badge-pending-count">0</span></h3>
+          </div>
+          <div class="task-items-list" id="list-pending">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+        <!-- 🟢 ZROBIONE -->
+        <div class="task-section" id="section-done">
+          <div class="task-section-header">
+            <h3>🟢 Zrobione <span class="badge-count" id="badge-done-count">0</span></h3>
+            <button class="btn-text-sm" id="toggle-done-tasks-btn">Zwiń / Rozwiń</button>
+          </div>
+          <div class="task-items-list" id="list-done">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+
+      </div>
+
+    </main>
+
+    <!-- ====================================================================
+         VIEW 2: PODSTRONA TRENERA RPG (Zarchiwizowany moduł coachingowy)
+         ==================================================================== -->
+    <main class="app-view hidden" id="view-coach">
+
+      <!-- Coach Motivation Message -->
+      <div class="coach-banner" id="coach-banner-el">
+        <span class="material-symbols-outlined coach-icon">psychology</span>
+        <p class="coach-text" id="coach-text-el">„Witaj! Twój plan na dziś jest gotowy. Skoncentruj się na tym, co naprawdę posuwa Cię do przodu.”</p>
+      </div>
+
+      <!-- Calendar Events Banner -->
+      <div class="calendar-banner hidden" id="calendar-banner-el">
+        <span class="material-symbols-outlined calendar-icon">calendar_today</span>
+        <div class="calendar-events-list" id="calendar-events-list-el">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- Grace Period Alert -->
+      <div class="alert-banner hidden" id="grace-alert-el">
+        <span class="material-symbols-outlined">warning</span>
+        <div class="alert-content">
+          <strong>Aktywny Dzień Ratunkowy!</strong>
+          <span>Wczoraj nie ukończono zadań. Zrób dzisiaj podwójną misję, aby uratować swój streak przed wyzerowaniem!</span>
+        </div>
+      </div>
+
+      <!-- Main Dashboard Grid (Swimlanes) -->
+      <div class="dashboard-grid">
+        
+        <!-- COLUMN 1: BAZA OPERACYJNA (Rutyny Osobiste) -->
+        <section class="swimlane" id="lane-routines">
+          <div class="lane-header">
+            <span class="material-symbols-outlined lane-icon icon-blue">self_care</span>
+            <h2>Baza (Rutyny Osobiste)</h2>
+          </div>
+          
+          <div class="routine-categories">
+            <!-- Morning Routines -->
+            <div class="routine-group">
+              <h3>🌅 Poranek</h3>
+              <div class="task-list" id="morning-routines-el">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+
+            <!-- Evening Routines -->
+            <div class="routine-group">
+              <h3>🌌 Wieczór</h3>
+              <div class="task-list" id="evening-routines-el">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- COLUMN 2: MISJA DNIA (Focus Biznes) -->
+        <section class="swimlane" id="lane-business">
+          <div class="lane-header">
+            <span class="material-symbols-outlined lane-icon icon-amber">bolt</span>
+            <h2>Misja Dnia (Focus Biznes)</h2>
+          </div>
+          
+          <div class="business-quest-container">
+            <div class="active-project-tag-container hidden" id="active-project-container-el">
+              Aktywny Projekt: <span class="project-badge" id="active-project-badge-el">-</span>
+            </div>
+            
+            <div class="task-list" id="business-tasks-el">
+              <!-- Dynamically populated -->
+              <div class="empty-state">
+                <span class="material-symbols-outlined empty-icon">cloud_sync</span>
+                <p>Brak zadań na dziś. Synchronizuj pliki lub wygeneruj plan z AI.</p>
+                <button class="btn btn-primary" id="generate-today-btn">
+                  <span class="material-symbols-outlined">autorenew</span> Wygeneruj Plan na Dziś
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+    </main>
+
+  </div>
+
+  <!-- Evening Review FAB -->
+  <button class="fab-btn" id="start-review-fab" title="Rozpocznij Rachunek Sumienia">
+    <span class="material-symbols-outlined">nightlight</span>
+  </button>
+
+  <!-- ====================================================================
+       MODAL: NOWE / EDYCJA ZADANIA
+       ==================================================================== -->
+  <div class="modal-overlay hidden" id="task-modal-el">
+    <div class="settings-modal" style="max-width: 550px;" role="dialog" aria-modal="true" aria-labelledby="task-modal-title">
+      <div class="modal-header">
+        <h2 id="task-modal-title">Nowe Zadanie</h2>
+        <button class="icon-btn" id="close-task-modal-btn">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <form id="task-form" class="modal-body" style="display: flex; flex-direction: column; gap: 14px;">
+        <input type="hidden" id="task-id-input">
+        
+        <div class="settings-form-group">
+          <label for="task-title-input">Tytuł zadania *:</label>
+          <input type="text" id="task-title-input" placeholder="np. Weryfikacja 1 draftu z folderu Robocze" required>
+        </div>
+        
+        <div class="settings-form-group">
+          <label for="task-desc-input">Opis / Szczegóły (opcjonalnie):</label>
+          <textarea id="task-desc-input" rows="3" placeholder="Dodatkowe informacje, notatki, linki..."></textarea>
+        </div>
+        
+        <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+          <div class="settings-form-group" style="flex: 1; min-width: 180px;">
+            <label for="task-status-select">Status (Protokół Świateł):</label>
+            <select id="task-status-select">
+              <option value="todo">🔴 Do zrobienia</option>
+              <option value="in_progress">🔵 W toku (Aktywne)</option>
+              <option value="pending">🟡 Oczekuje na ocenę / zablokowane</option>
+              <option value="done">🟢 Zrobione</option>
+            </select>
+          </div>
+          
+          <div class="settings-form-group" style="flex: 1; min-width: 140px;">
+            <label for="task-size-select">Rozmiar:</label>
+            <select id="task-size-select">
+              <option value="S">[S] Małe (do 30 min)</option>
+              <option value="M">[M] Średnie (1-2h)</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="settings-form-group">
+          <label for="task-project-input">Projekt / Obszar:</label>
+          <input type="text" id="task-project-input" placeholder="np. Life Coach, Praca w Niemczech, KarolinaMercedes, Zdrowie">
+        </div>
+        
+        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
+          <button type="button" class="btn btn-secondary" id="cancel-task-btn">Anuluj</button>
+          <button type="submit" class="btn btn-primary" id="save-task-submit-btn">Zapisz Zadanie</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ====================================================================
+       MODAL: RAW TASKS BACKUP / EXPORT / IMPORT
+       ==================================================================== -->
+  <div class="modal-overlay hidden" id="tasks-backup-modal-el">
+    <div class="settings-modal" style="max-width: 600px;" role="dialog" aria-modal="true" aria-labelledby="backup-modal-title">
+      <div class="modal-header">
+        <h2 id="backup-modal-title">Kopia i Eksport Zadań</h2>
+        <button class="icon-btn" id="close-backup-modal-btn">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 14px;">
+        <p class="section-desc">Eksportuj lub importuj listę zadań w formacie JSON lub Markdown. Dane są automatycznie zabezpieczane w pamięci lokalnej (localStorage i IndexedDB) do pracy offline w magazynie.</p>
+        
+        <textarea id="tasks-raw-textarea" rows="10" style="width: 100%; font-family: monospace; font-size: 12px; padding: 10px; border-radius: var(--radius-sm); background: rgba(0,0,0,0.3); border: 1px solid var(--border); color: #fff;"></textarea>
+        
+        <div style="display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap;">
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary btn-sm" id="btn-export-json">Eksportuj JSON</button>
+            <button class="btn btn-secondary btn-sm" id="btn-export-md">Eksportuj Markdown</button>
+          </div>
+          <button class="btn btn-primary btn-sm" id="btn-import-raw">Zastosuj / Importuj</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EVENING REVIEW CHAT MODAL -->
+  <div class="modal-overlay hidden" id="review-modal-el">
+    <div class="settings-modal chat-modal" role="dialog" aria-modal="true" aria-labelledby="review-title">
+      <div class="modal-header">
+        <h2 id="review-title">🌌 Rachunek Sumienia</h2>
+        <button class="icon-btn" id="close-review-btn">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      
+      <div class="modal-body chat-body" id="chat-messages-container">
+        <!-- Czat -->
+      </div>
+      
+      <div class="chat-input-area">
+        <textarea id="chat-input-el" placeholder="Napisz do trenera..." rows="1"></textarea>
+        <button class="btn btn-primary" id="chat-send-btn">
+          <span class="material-symbols-outlined">send</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS MODAL -->
+  <div class="modal-overlay hidden" id="settings-modal-el">
+    <div class="settings-modal" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+      <div class="modal-header">
+        <h2 id="settings-title">Ustawienia & Integracje</h2>
+        <button class="icon-btn" id="close-settings-btn">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      
+      <div class="modal-body">
+        <!-- Section: API Key -->
+        <div class="settings-section">
+          <h3><span class="material-symbols-outlined">vpn_key</span> Połączenie AI (Klucz, Model, URL)</h3>
+          <p class="section-desc">Aby ominąć limity Google, wklej tu klucz do OpenRouter, Cerebras, Groq itp. Wybranie modelu automatycznie uzupełni adres URL.</p>
+          <div class="settings-form-group">
+            <label for="gemini-key-input">Klucz API:</label>
+            <input type="password" id="gemini-key-input" placeholder="Wklej swój klucz API...">
+          </div>
+          <br>
+          <div class="settings-form-group">
+            <label for="ai-model-input">Model:</label>
+            <select id="ai-model-input">
+              <option value="deepseek/deepseek-chat-v4-flash:free">DeepSeek V4 Flash (OpenRouter FREE — najszybszy, 1% latency)</option>
+              <option value="deepseek/deepseek-chat-v4-pro:free">DeepSeek V4 Pro (OpenRouter FREE — lepszy reasoning)</option>
+              <option value="z-ai/glm-5.2:free">GLM 5.2 (OpenRouter FREE — 3.52T tokenów, dobry do kodu)</option>
+              <option value="nvidia/nemotron-3-ultra:free">Nemotron 3 Ultra (OpenRouter FREE — Nvidia)</option>
+              <option value="minimax/minimax-m3:free">MiniMax M3 (OpenRouter FREE — 3.95T tokenów)</option>
+              <option value="tencent/hy3:free">Hy3 (OpenRouter FREE — 9.76T tokenów, największy)</option>
+              <option value="google/gemini-2.5-flash-lite-preview">Gemini 2.5 Flash Lite (Google — darmowe API)</option>
+              <option value="google/gemini-2.5-flash-preview">Gemini 2.5 Flash (Google — darmowe API)</option>
+              <option value="gpt-oss-120b">gpt-oss-120b (Cerebras — darmowy 120B)</option>
+              <option value="openai/gpt-4o-mini">GPT-4o-mini (OpenRouter — płatny, tani)</option>
+            </select>
+          </div>
+          <br>
+          <div class="settings-form-group">
+            <label for="ai-url-input">Opcjonalny URL API:</label>
+            <input type="text" id="ai-url-input" placeholder="Opcjonalny URL (np. https://api.cerebras.ai/v1/chat/completions)">
+          </div>
+          <br>
+          <button class="btn" id="save-ai-settings-btn" style="width: 100%;">Zapisz Ustawienia AI</button>
+          <span class="status-msg hidden" id="key-status-el">Zapisano pomyślnie!</span>
+        </div>
+
+        <!-- Section: Server Sync -->
+        <div class="settings-section">
+          <h3><span class="material-symbols-outlined">sync_alt</span> Synchronizacja z Serwerem PC</h3>
+          <p class="section-desc">Pobierz lub zapisz stan aplikacji i listę zadań na lokalnym serwerze `server.py`.</p>
+          <div class="sync-actions" style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button class="btn btn-secondary" id="server-sync-pull-btn">
+              <span class="material-symbols-outlined">download</span> Pobierz z serwera
+            </button>
+            <button class="btn btn-secondary" id="server-sync-push-btn">
+              <span class="material-symbols-outlined">upload</span> Wyślij na serwer
+            </button>
+          </div>
+          <span class="status-msg hidden" id="server-sync-status-el">Zsynchronizowano z serwerem!</span>
+        </div>
+
+        <!-- Section: Notifications -->
+        <div class="settings-section">
+          <h3><span class="material-symbols-outlined">notifications</span> Powiadomienia</h3>
+          <p class="section-desc">Włącz powiadomienia systemowe, aby aplikacja mogła przypominać o rutynach i misjach dnia na czas.</p>
+          <div class="sync-actions">
+            <button class="btn btn-secondary" id="request-notifications-btn">
+              <span class="material-symbols-outlined">notifications_active</span> Włącz Powiadomienia
+            </button>
+            <span class="status-msg hidden" id="notifications-status-el">Zezwolono na powiadomienia!</span>
+          </div>
+        </div>
+
+        <!-- Section: Google Drive Sync -->
+        <div class="settings-section">
+          <h3><span class="material-symbols-outlined">cloud</span> Dysk Google (OAuth2)</h3>
+          <p class="section-desc">Połącz aplikację ze swoim Dyskiem Google. Aplikacja będzie miała dostęp wyłącznie do plików w utworzonym przez siebie folderze <code>[LifeCoach_Data]</code>.</p>
+          
+          <div class="input-group mb-3" style="margin-bottom: 12px;">
+            <input type="text" id="google-client-id-input" placeholder="Wklej Google OAuth Client ID...">
+            <button class="btn" id="save-client-id-btn">Zapisz ID</button>
+          </div>
+          <span class="status-msg hidden" id="client-id-status-el">Zapisano Client ID!</span>
+
+          <div class="sync-actions">
+            <button class="btn btn-google" id="google-login-btn">
+              <span class="google-icon"></span> Połącz z kontem Google
+            </button>
+            <button class="btn btn-danger hidden" id="google-logout-btn">
+              Odłącz konto Google
+            </button>
+          </div>
+          
+          <div class="sync-status" id="sync-status-el">
+            <span class="status-indicator offline"></span>
+            <span class="status-text">Status: Brak połączenia z Dyskiem Google</span>
+          </div>
+
+          <div class="sync-actions mt-3">
+            <button class="btn btn-secondary" id="sync-now-btn" disabled>
+              <span class="material-symbols-outlined">sync</span> Synchronizuj Pliki
+            </button>
+          </div>
+        </div>
+
+        <!-- Section: Reset & Mocking for Testing -->
+        <div class="settings-section">
+          <h3><span class="material-symbols-outlined">bug_report</span> Narzędzia Developerskie / Testowe</h3>
+          <p class="section-desc">Użyj poniższych przycisków, aby przetestować działanie mechanik bez czekania na zmianę daty.</p>
+          <div class="test-buttons-grid">
+            <button class="btn btn-outline" id="test-complete-all-btn">Ukończ dzisiejsze zadania</button>
+            <button class="btn btn-outline" id="test-next-day-btn">Symuluj następny dzień</button>
+            <button class="btn btn-outline" id="test-reset-streak-btn">Resetuj licznik serii</button>
+            <button class="btn btn-outline" id="test-add-shield-btn">Dodaj 1 Tarczę</button>
+          </div>
+          <hr style="border-color: rgba(255,255,255,0.08); margin: 16px 0;">
+          <h3><span class="material-symbols-outlined">restart_alt</span> Reset Danych</h3>
+          <p class="section-desc">Wyczyść całą lokalną bazę danych i załaduj świeże dane startowe. Użyj tego, gdy chcesz zresetować stan.</p>
+          <div class="test-buttons-grid">
+            <button class="btn btn-danger" id="reset-database-btn">🗑️ Resetuj Lokalną Bazę</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- INFO / EXPLANATION MODAL -->
+  <div class="modal-overlay hidden" id="info-modal-el">
+    <div class="settings-modal" style="max-width: 500px;" role="dialog" aria-modal="true" aria-labelledby="info-modal-title">
+      <div class="modal-header">
+        <h2 id="info-modal-title">Wyjaśnienie zadania</h2>
+        <button class="icon-btn" id="close-info-btn">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <div class="modal-body" id="info-modal-body" style="line-height: 1.6; font-size: 0.95rem; white-space: pre-line;">
+        <!-- Content will be injected dynamically -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Scripts -->
+  <script src="app.js?v=28"></script>
+  <script src="gdrive.js?v=28"></script>
+  <script src="ai.js?v=28"></script>
+  
+  <script>
+    // Register Service Worker for PWA support (v28)
+    if ('serviceWorker' in navigator) {
+      let refreshing = false;
+      // Auto-reload once new Service Worker activates and claims the client
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!refreshing) {
+          refreshing = true;
+          console.log('[SW v28] Controller changed, auto-refreshing for newest version...');
+          window.location.reload();
+        }
+      });
+
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js')
+          .then(reg => {
+            console.log('[SW v28] Zarejestrowany pomyślnie!', reg.scope);
+            // Check for service worker updates immediately
+            reg.update().catch(() => {});
+            reg.addEventListener('updatefound', () => {
+              const newWorker = reg.installing;
+              if (newWorker) {
+                newWorker.addEventListener('statechange', () => {
+                  if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                    console.log('[SW v28] Nowa wersja zainstalowana — gotowa do pracy offline.');
+                  }
+                });
+              }
+            });
+          })
+          .catch(err => {
+            console.warn('[SW v28] Błąd rejestracji Service Workera (może wymagać HTTPS):', err);
+          });
+      });
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,62 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "title": "Poranna medytacja i rozruch fizyczny (15 min)",
+      "orig_title": "Poranna medytacja i rozruch fizyczny (15 min)",
+      "description": "- Rozgrzewka, ćwiczenia oddechowe i krótka sesja uważności na udany początek dnia.",
+      "status": "todo",
+      "size": "S",
+      "project": "Zdrowie i Ciało",
+      "priority": 8,
+      "updatedAt": "2026-10-24T20:00:00.000Z"
+    },
+    {
+      "id": 2,
+      "title": "Przegląd celów tygodniowych i priorytetów",
+      "orig_title": "Przegląd celów tygodniowych i priorytetów",
+      "description": "- Zdefiniowanie najważniejszego zadania dnia (Hero Action) i planu pracy.",
+      "status": "in_progress",
+      "size": "M",
+      "project": "Rozwój",
+      "priority": 9,
+      "updatedAt": "2026-10-24T20:00:00.000Z"
+    },
+    {
+      "id": 3,
+      "title": "Uporządkowanie biurka i cyfrowych notatek",
+      "orig_title": "Uporządkowanie biurka i cyfrowych notatek",
+      "description": "- Czyszczenie przestrzeni roboczej i archiwizacja starych dokumentów.",
+      "status": "done",
+      "size": "S",
+      "project": "Organizacja",
+      "priority": 5,
+      "updatedAt": "2026-10-24T20:00:00.000Z"
+    },
+    {
+      "id": 4,
+      "title": "Spacer na świeżym powietrzu (10 000 kroków)",
+      "orig_title": "Spacer na świeżym powietrzu (10 000 kroków)",
+      "description": "- Aktywny wypoczynek i regeneracja w ciągu dnia.",
+      "status": "todo",
+      "size": "S",
+      "project": "Zdrowie i Ciało",
+      "priority": 6,
+      "updatedAt": "2026-10-24T20:00:00.000Z"
+    },
+    {
+      "id": 5,
+      "title": "Przegląd budżetu domowego i stałych opłat",
+      "orig_title": "Przegląd budżetu domowego i stałych opłat",
+      "description": "- Zestawienie miesięcznych wydatków i zaplanowanie oszczędności.",
+      "status": "todo",
+      "size": "M",
+      "project": "Finanse",
+      "priority": 7,
+      "updatedAt": "2026-10-24T20:00:00.000Z"
+    }
+  ],
+  "timestamp": 1729800000000,
+  "version": 29,
+  "demo": true
+}
