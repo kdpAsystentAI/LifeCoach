@@ -313,17 +313,123 @@ async function seedDefaultData() {
   }
 }
 
-// Get standard date string YYYY-MM-DD
+// --- DOBA OPERACYJNA (Europe/Berlin, reset o 04:00 rano) ---
+function getOperationalDate(now = new Date()) {
+  const shifted = new Date(now.getTime() - 4 * 60 * 60 * 1000);
+  return new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Europe/Berlin',
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  }).format(shifted);
+}
+
+// Get standard date string YYYY-MM-DD (operacyjna doba z resetem o 04:00)
 function getTodayDateString() {
-  const d = new Date();
-  return d.toISOString().split('T')[0];
+  return getOperationalDate();
 }
 
 // Get Polish written date
 function getPolishDateString() {
-  const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+  const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'Europe/Berlin' };
   return new Date().toLocaleDateString('pl-PL', options);
 }
+
+// --- PROTOKÓŁ MEDYCZNY: DULSEVIA (Matematyka UTC, trwały log w IndexedDB) ---
+function isDulseviaDay(operationalDateStr = getOperationalDate()) {
+  const parts = operationalDateStr.split('-').map(Number);
+  const targetUtc = Date.UTC(parts[0], parts[1] - 1, parts[2]);
+  const startUtc = Date.UTC(2026, 9, 26); // 2026-10-26 (miesiąc 9 = październik)
+  const diffDays = Math.round((targetUtc - startUtc) / (24 * 60 * 60 * 1000));
+  if (diffDays < 0) {
+    // Before 2026-10-26: daily dose phase (30 mg codziennie do 25.10)
+    return true;
+  }
+  // From 2026-10-26: alternate days starting with break on 26.10 (diffDays=0 -> false, diffDays=1 -> true)
+  return (diffDays % 2 === 1);
+}
+
+async function getMedicationHistory() {
+  try {
+    const pref = await dbGet('preferences', 'medication_history');
+    if (pref && pref.data) return pref.data;
+  } catch (e) {}
+  try {
+    const raw = localStorage.getItem('medication_history');
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return {};
+}
+
+async function saveMedicationHistory(history) {
+  try {
+    await dbPut('preferences', { key: 'medication_history', data: history });
+  } catch (e) {}
+  try {
+    localStorage.setItem('medication_history', JSON.stringify(history));
+  } catch (e) {}
+}
+
+async function updateDulseviaUI() {
+  const todayOp = getOperationalDate();
+  const opBadge = document.getElementById('operational-day-badge');
+  if (opBadge) {
+    opBadge.innerText = `Doba: ${todayOp}`;
+  }
+
+  const schedTag = document.getElementById('dulsevia-schedule-tag');
+  if (schedTag) {
+    schedTag.innerText = todayOp < '2026-10-26' ? 'Etap 2: Codziennie 30 mg' : 'Etap 3: Co 2 dni';
+  }
+
+  const statusBadge = document.getElementById('dulsevia-day-status');
+  const confirmBtn = document.getElementById('btn-dulsevia-confirm');
+  const history = await getMedicationHistory();
+  const todayRecord = history[todayOp];
+  const isPillDay = isDulseviaDay(todayOp);
+
+  if (todayRecord && todayRecord.taken) {
+    if (statusBadge) {
+      statusBadge.className = 'medical-status-badge taken';
+      statusBadge.innerText = '✅ Przyjęto dzisiaj';
+    }
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.innerHTML = `<span class="material-symbols-outlined">check</span> Dawka przyjęta (${todayRecord.time || 'OK'})`;
+    }
+  } else if (isPillDay) {
+    if (statusBadge) {
+      statusBadge.className = 'medical-status-badge pill-day';
+      statusBadge.innerText = '💊 Dzień dawki (30 mg)';
+    }
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.innerHTML = `<span class="material-symbols-outlined">medication</span> Potwierdź przyjęcie dawki (30 mg)`;
+    }
+  } else {
+    if (statusBadge) {
+      statusBadge.className = 'medical-status-badge rest-day';
+      statusBadge.innerText = '⏸️ Dzień przerwy (0 mg)';
+    }
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.innerHTML = `<span class="material-symbols-outlined">medication</span> Potwierdź dawkę (nadprogramowo)`;
+    }
+  }
+}
+
+window.confirmDulseviaDose = async function() {
+  const todayOp = getOperationalDate();
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
+  const history = await getMedicationHistory();
+  history[todayOp] = {
+    taken: true,
+    timestamp: now.getTime(),
+    time: timeStr
+  };
+  await saveMedicationHistory(history);
+  await updateDulseviaUI();
+  showBannerNotification(`Zarejestrowano przyjęcie dawki Dulsevii na dobę ${todayOp}! 💊`);
+};
 
 // --- STREAK & DATE ROLLOVER ENGINE ---
 async function checkDailyRollover() {
@@ -960,24 +1066,63 @@ async function saveProjectTasksToStorage(triggerServerPush = true) {
   }
 }
 
-// Push tasks to server endpoint /api/tasks/save
+let currentSourceRevision = localStorage.getItem('tasks_source_revision') || '';
+let hasPendingTasksSync = localStorage.getItem('tasks_pending_sync') === 'true';
+
+// Push tasks to server endpoint /api/tasks/save (with source_revision & conflict 409 handling)
 async function pushTasksToServer() {
   try {
     const response = await fetch('/api/tasks/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tasks: projectTasksList })
+      body: JSON.stringify({
+        tasks: projectTasksList,
+        source_revision: currentSourceRevision
+      })
     });
+
+    if (response.status === 409) {
+      // 409 Conflict: Server file changed!
+      const errData = await response.json().catch(() => ({}));
+      console.warn('[SYNC 409] Version conflict detected:', errData);
+      showBannerNotification('Wykryto konflikt wersji na serwerze! Pobieranie najnowszych zadań... ⚠️');
+      updateSyncStatusUIBadge(false, 'Konflikt wersji (Pobieranie...) ⚠️');
+      await syncTasksWithServer(true);
+      return;
+    }
+
     if (response.ok) {
+      const respData = await response.json().catch(() => ({}));
+      if (respData.source_revision) {
+        currentSourceRevision = respData.source_revision;
+        localStorage.setItem('tasks_source_revision', currentSourceRevision);
+      }
+      hasPendingTasksSync = false;
+      localStorage.setItem('tasks_pending_sync', 'false');
       updateSyncStatusUIBadge(true, 'Zsynchronizowano z tasks_uzytkownika.md ✅');
+    } else {
+      hasPendingTasksSync = true;
+      localStorage.setItem('tasks_pending_sync', 'true');
+      updateSyncStatusUIBadge(false, 'Lokalnie (Oczekuje na sync ⏳)');
     }
   } catch (e) {
-    updateSyncStatusUIBadge(false, 'Lokalnie (Offline Gotowe)');
+    hasPendingTasksSync = true;
+    localStorage.setItem('tasks_pending_sync', 'true');
+    updateSyncStatusUIBadge(false, 'Lokalnie (Offline Gotowe ⏳)');
   }
 }
 
 // Sync tasks from server endpoint /api/tasks (with tasks.json fallback for static hosting/GitHub Pages)
 async function syncTasksWithServer(silent = false) {
+  // If there are unpushed local changes, push them first before pulling
+  if (hasPendingTasksSync) {
+    await pushTasksToServer();
+    if (hasPendingTasksSync) {
+      // Push still failed (e.g. offline)
+      return false;
+    }
+  }
+
   // 1. Try backend server endpoint /api/tasks (dynamic tasks_uzytkownika.md sync)
   try {
     const response = await fetch('/api/tasks');
@@ -985,9 +1130,15 @@ async function syncTasksWithServer(silent = false) {
       const data = await response.json();
       if (data && Array.isArray(data.tasks)) {
         projectTasksList = data.tasks;
+        if (data.source_revision) {
+          currentSourceRevision = data.source_revision;
+          localStorage.setItem('tasks_source_revision', currentSourceRevision);
+        }
+        hasPendingTasksSync = false;
+        localStorage.setItem('tasks_pending_sync', 'false');
         localStorage.setItem(LOCAL_STORAGE_TASKS_META_KEY, JSON.stringify({
           timestamp: data.timestamp || Date.now(),
-          version: 28
+          version: data.version || 29
         }));
         await saveProjectTasksToStorage(false);
         renderProjectTasks();
@@ -1012,6 +1163,15 @@ async function syncTasksWithServer(silent = false) {
         : (staticData && Array.isArray(staticData.tasks) ? staticData.tasks : null);
 
       if (loadedTasks && loadedTasks.length > 0) {
+        const isDemo = staticData.demo || (loadedTasks.length <= 5 && loadedTasks[0].title.includes('medytacja'));
+
+        // Never overwrite real user tasks with public demo tasks!
+        if (isDemo && projectTasksList.length > 5) {
+          updateSyncStatusUIBadge(false, 'Zadania lokalne zachowane (Tryb offline)');
+          if (!silent) showBannerNotification('Zadania prywatne zachowane w pamięci urządzenia. 🔒');
+          return true;
+        }
+
         const storedMetaRaw = localStorage.getItem(LOCAL_STORAGE_TASKS_META_KEY);
         let storedTimestamp = 0;
         if (storedMetaRaw) {
@@ -1026,18 +1186,21 @@ async function syncTasksWithServer(silent = false) {
           projectTasksList = loadedTasks;
           localStorage.setItem(LOCAL_STORAGE_TASKS_META_KEY, JSON.stringify({
             timestamp: incomingTimestamp,
-            version: staticData.version || 28
+            version: staticData.version || 29
           }));
           await saveProjectTasksToStorage(false);
           renderProjectTasks();
-          updateSyncStatusUIBadge(true, 'Załadowano zadania użytkownika (tasks.json v28) 📋');
-          if (!silent) {
-            showBannerNotification('Załadowano aktualną listę zadań użytkownika (tasks.json)! 📋');
+          if (isDemo) {
+            updateSyncStatusUIBadge(true, 'Tryb Demonstracyjny (Public Demo) 🎭');
+            if (!silent) showBannerNotification('Załadowano bazę demonstracyjną (Public Demo)! 🎭');
+          } else {
+            updateSyncStatusUIBadge(true, 'Załadowano zadania (tasks.json v29) 📋');
+            if (!silent) showBannerNotification('Załadowano listę zadań (tasks.json)! 📋');
           }
           return true;
         } else {
           // Local tasks exist, offline-ready
-          updateSyncStatusUIBadge(false, 'Lokalnie (Offline Gotowe)');
+          updateSyncStatusUIBadge(false, hasPendingTasksSync ? 'Lokalnie (Oczekuje na sync ⏳)' : 'Lokalnie (Offline Gotowe)');
           return true;
         }
       }
@@ -1047,12 +1210,22 @@ async function syncTasksWithServer(silent = false) {
   }
 
   // 3. Fallback when neither source is accessible
-  updateSyncStatusUIBadge(false, 'Lokalnie (Offline Gotowe)');
+  updateSyncStatusUIBadge(false, hasPendingTasksSync ? 'Lokalnie (Oczekuje na sync ⏳)' : 'Lokalnie (Offline Gotowe)');
   if (!silent) {
     showBannerNotification('Tryb Offline — używasz lokalnej bazy zadań. 📴');
   }
   return false;
 }
+
+// Auto-flush pending sync when device comes back online
+window.addEventListener('online', async () => {
+  console.log('[NETWORK] Device is back online. Syncing pending changes...');
+  if (hasPendingTasksSync) {
+    await pushTasksToServer();
+  } else {
+    await syncTasksWithServer(true);
+  }
+});
 
 function updateSyncStatusUIBadge(isOnline, text) {
   const dot = document.getElementById('task-sync-dot');
@@ -1063,8 +1236,52 @@ function updateSyncStatusUIBadge(isOnline, text) {
   }
 }
 
-// 3. Render Project Tasks (Traffic light logic & single active task)
+// --- 4-STOPNIOWY KOMPARATOR SORTOWANIA ZADAŃ ---
+function extractDeadline(title) {
+  if (!title) return null;
+  const m = title.match(/\[DEADLINE:\s*(\d{4}-\d{2}-\d{2})\]/);
+  return m ? m[1] : null;
+}
+
+function extractPriority(title) {
+  if (!title) return 5;
+  if (title.includes('[DEADLINE:')) return 11;
+  const m = title.match(/\[(\d{1,2})\/10\]/);
+  return m ? parseInt(m[1], 10) : 5;
+}
+
+function compareTasks4Step(a, b) {
+  // 1. Status: 🔵 Hero (in_progress) zawsze na szczycie
+  const isHeroA = a.status === 'in_progress' ? 1 : 0;
+  const isHeroB = b.status === 'in_progress' ? 1 : 0;
+  if (isHeroA !== isHeroB) return isHeroB - isHeroA;
+
+  // 2. Twarde terminy: [DEADLINE: YYYY-MM-DD] rosnąco chronologicznie
+  const dlA = a.deadline || extractDeadline(a.title);
+  const dlB = b.deadline || extractDeadline(b.title);
+  if (dlA && dlB) {
+    if (dlA !== dlB) return dlA.localeCompare(dlB);
+  } else if (dlA && !dlB) {
+    return -1;
+  } else if (!dlA && dlB) {
+    return 1;
+  }
+
+  // 3. Ważność: malejąco od 11/10 do 1/10
+  const prioA = typeof a.priority === 'number' ? a.priority : extractPriority(a.title);
+  const prioB = typeof b.priority === 'number' ? b.priority : extractPriority(b.title);
+  if (prioA !== prioB) return prioB - prioA;
+
+  // 4. Stabilny indeks linii z pliku
+  const numA = parseInt(String(a.id).replace(/\D/g, ''), 10) || 0;
+  const numB = parseInt(String(b.id).replace(/\D/g, ''), 10) || 0;
+  return numA - numB;
+}
+
+// 3. Render Project Tasks (Traffic light logic, 4-stopniowy komparator, Dulsevia & subtasks)
 function renderProjectTasks() {
+  updateDulseviaUI();
+
   const countAll = projectTasksList.length;
   const inProgressTasks = projectTasksList.filter(t => t.status === 'in_progress');
   const todoTasks = projectTasksList.filter(t => t.status === 'todo');
@@ -1099,16 +1316,16 @@ function renderProjectTasks() {
     
     if (heroActions) {
       heroActions.innerHTML = `
-        <button class="btn btn-sm btn-done-task" onclick="completeProjectTask(${activeTask.id})">
+        <button class="btn btn-sm btn-done-task" onclick="completeProjectTask('${activeTask.id}')">
           <span class="material-symbols-outlined">check_circle</span> Oznacz jako Zrobione (🟢)
         </button>
-        <button class="btn btn-sm btn-pause-task" onclick="pauseProjectTask(${activeTask.id})">
+        <button class="btn btn-sm btn-pause-task" onclick="pauseProjectTask('${activeTask.id}')">
           <span class="material-symbols-outlined">pause_circle</span> Wstrzymaj (🟡)
         </button>
-        <button class="btn btn-sm btn-outline" onclick="resetProjectTask(${activeTask.id})">
+        <button class="btn btn-sm btn-outline" onclick="resetProjectTask('${activeTask.id}')">
           <span class="material-symbols-outlined">undo</span> Cofnij do Do Zrobienia (🔴)
         </button>
-        <button class="btn btn-sm btn-secondary" onclick="openEditTaskModal(${activeTask.id})">
+        <button class="btn btn-sm btn-secondary" onclick="openEditTaskModal('${activeTask.id}')">
           <span class="material-symbols-outlined">edit</span> Edytuj
         </button>
       `;
@@ -1138,10 +1355,10 @@ function renderProjectTasks() {
   if (secPending) secPending.style.display = showSection('pending') ? 'flex' : 'none';
   if (secDone) secDone.style.display = showSection('done') ? 'flex' : 'none';
 
-  // 🔴 DO ZROBIENIA
+  // 🔴 DO ZROBIENIA (posortowane 4-stopniowym komparatorem)
   const listTodo = document.getElementById('list-todo');
   if (listTodo) {
-    const filtered = todoTasks.filter(matchesSearch);
+    const filtered = todoTasks.filter(matchesSearch).sort(compareTasks4Step);
     if (filtered.length === 0) {
       listTodo.innerHTML = '<div class="task-empty-state">Brak zadań w stanie Do Zrobienia 🔴</div>';
     } else {
@@ -1152,7 +1369,7 @@ function renderProjectTasks() {
   // 🟡 OCZEKUJE / ZABLOKOWANE
   const listPending = document.getElementById('list-pending');
   if (listPending) {
-    const filtered = pendingTasks.filter(matchesSearch);
+    const filtered = pendingTasks.filter(matchesSearch).sort(compareTasks4Step);
     if (filtered.length === 0) {
       listPending.innerHTML = '<div class="task-empty-state">Brak zadań w stanie Oczekuje 🟡</div>';
     } else {
@@ -1166,7 +1383,7 @@ function renderProjectTasks() {
     if (isDoneSectionCollapsed) {
       listDone.innerHTML = '<div class="task-empty-state">Sekcja zwinięta. Kliknij Rozwiń powyżej.</div>';
     } else {
-      const filtered = doneTasks.filter(matchesSearch);
+      const filtered = doneTasks.filter(matchesSearch).sort(compareTasks4Step);
       if (filtered.length === 0) {
         listDone.innerHTML = '<div class="task-empty-state">Brak ukończonych zadań 🟢</div>';
       } else {
@@ -1180,60 +1397,81 @@ function createTaskCardHTML(t) {
   const isDone = t.status === 'done';
   const sizeBadge = t.size ? `<span class="task-badge-size">[${escapeHTML(t.size)}]</span>` : '';
   const projectBadge = t.project ? `<span class="task-badge-project">${escapeHTML(t.project)}</span>` : '';
+  
+  const prioVal = typeof t.priority === 'number' ? t.priority : extractPriority(t.title);
+  const prioBadge = prioVal ? `<span class="task-badge-prio">[${prioVal}/10]</span>` : '';
+  const dlVal = t.deadline || extractDeadline(t.title);
+  const dlBadge = dlVal ? `<span class="task-badge-deadline">⏳ ${escapeHTML(dlVal)}</span>` : '';
+  const isEpic = t.is_epic || (t.title && t.title.includes('[EPIC]'));
+  const epicBadge = isEpic ? `<span class="task-badge-epic">[EPIC]</span>` : '';
   const descHTML = t.description ? `<div class="task-card-desc">${formatTaskMarkdown(t.description)}</div>` : '';
+
+  let subtasksHTML = '';
+  if (t.subtasks && t.subtasks.length > 0) {
+    subtasksHTML = `
+      <div class="task-subtasks-list">
+        ${t.subtasks.map(st => `
+          <label class="task-subtask-item ${st.done ? 'subtask-done' : ''}">
+            <input type="checkbox" ${st.done ? 'checked' : ''} onchange="toggleProjectSubtaskCheck('${t.id}', '${st.id}', this.checked)">
+            <span>${escapeHTML(st.title)}</span>
+          </label>
+        `).join('')}
+      </div>
+    `;
+  }
 
   let actionBtns = '';
   if (t.status === 'todo') {
     actionBtns = `
-      <button class="btn-xs btn-start-task" onclick="startProjectTask(${t.id})" title="Ustaw jako jedyne aktywne zadanie 🔵">
+      <button class="btn-xs btn-start-task" onclick="startProjectTask('${t.id}')" title="Ustaw jako jedyne aktywne zadanie 🔵">
         Rozpocznij (🔵)
       </button>
-      <button class="btn-xs btn-pause-task" onclick="pauseProjectTask(${t.id})">
+      <button class="btn-xs btn-pause-task" onclick="pauseProjectTask('${t.id}')">
         Oczekuje (🟡)
       </button>
-      <button class="btn-xs btn-done-task" onclick="completeProjectTask(${t.id})">
+      <button class="btn-xs btn-done-task" onclick="completeProjectTask('${t.id}')">
         Zrobione (🟢)
       </button>
-      <button class="btn-xs btn-secondary" onclick="openEditTaskModal(${t.id})">
+      <button class="btn-xs btn-secondary" onclick="openEditTaskModal('${t.id}')">
         Edytuj
       </button>
-      <button class="btn-xs btn-delete-task" onclick="deleteProjectTask(${t.id})">
+      <button class="btn-xs btn-delete-task" onclick="deleteProjectTask('${t.id}')">
         Usuń
       </button>
     `;
   } else if (t.status === 'pending') {
     actionBtns = `
-      <button class="btn-xs btn-start-task" onclick="startProjectTask(${t.id})">
+      <button class="btn-xs btn-start-task" onclick="startProjectTask('${t.id}')">
         Rozpocznij (🔵)
       </button>
-      <button class="btn-xs btn-outline" onclick="resetProjectTask(${t.id})">
+      <button class="btn-xs btn-outline" onclick="resetProjectTask('${t.id}')">
         Cofnij (🔴)
       </button>
-      <button class="btn-xs btn-done-task" onclick="completeProjectTask(${t.id})">
+      <button class="btn-xs btn-done-task" onclick="completeProjectTask('${t.id}')">
         Zrobione (🟢)
       </button>
-      <button class="btn-xs btn-secondary" onclick="openEditTaskModal(${t.id})">
+      <button class="btn-xs btn-secondary" onclick="openEditTaskModal('${t.id}')">
         Edytuj
       </button>
-      <button class="btn-xs btn-delete-task" onclick="deleteProjectTask(${t.id})">
+      <button class="btn-xs btn-delete-task" onclick="deleteProjectTask('${t.id}')">
         Usuń
       </button>
     `;
   } else if (t.status === 'done') {
     actionBtns = `
-      <button class="btn-xs btn-outline" onclick="resetProjectTask(${t.id})">
+      <button class="btn-xs btn-outline" onclick="resetProjectTask('${t.id}')">
         Przywróć (🔴)
       </button>
-      <button class="btn-xs btn-delete-task" onclick="deleteProjectTask(${t.id})">
+      <button class="btn-xs btn-delete-task" onclick="deleteProjectTask('${t.id}')">
         Usuń
       </button>
     `;
   } else if (t.status === 'in_progress') {
     actionBtns = `
-      <button class="btn-xs btn-done-task" onclick="completeProjectTask(${t.id})">
+      <button class="btn-xs btn-done-task" onclick="completeProjectTask('${t.id}')">
         Zakończ (🟢)
       </button>
-      <button class="btn-xs btn-pause-task" onclick="pauseProjectTask(${t.id})">
+      <button class="btn-xs btn-pause-task" onclick="pauseProjectTask('${t.id}')">
         Wstrzymaj (🟡)
       </button>
     `;
@@ -1243,15 +1481,19 @@ function createTaskCardHTML(t) {
     <div class="task-card status-${t.status}" id="task-card-${t.id}">
       <div class="task-card-header">
         <div class="task-title-wrap">
-          <input type="checkbox" class="task-checkbox" ${isDone ? 'checked' : ''} onchange="toggleProjectTaskCheck(${t.id}, this.checked)">
+          <input type="checkbox" class="task-checkbox" ${isDone ? 'checked' : ''} onchange="toggleProjectTaskCheck('${t.id}', this.checked)">
           <span class="task-card-title">${escapeHTML(t.title)}</span>
         </div>
         <div class="task-card-meta">
+          ${prioBadge}
+          ${dlBadge}
+          ${epicBadge}
           ${sizeBadge}
           ${projectBadge}
         </div>
       </div>
       ${descHTML}
+      ${subtasksHTML}
       <div class="task-card-actions">
         ${actionBtns}
       </div>
@@ -1261,11 +1503,11 @@ function createTaskCardHTML(t) {
 
 // Start a task -> Enforce Zasada Jednego 🔵
 window.startProjectTask = async function(id) {
-  const task = projectTasksList.find(t => t.id === id);
+  const task = projectTasksList.find(t => String(t.id) === String(id));
   if (!task) return;
 
   for (const t of projectTasksList) {
-    if (t.status === 'in_progress' && t.id !== id) {
+    if (t.status === 'in_progress' && String(t.id) !== String(id)) {
       t.status = 'todo';
     }
   }
@@ -1279,7 +1521,7 @@ window.startProjectTask = async function(id) {
 
 // Complete a task
 window.completeProjectTask = async function(id) {
-  const task = projectTasksList.find(t => t.id === id);
+  const task = projectTasksList.find(t => String(t.id) === String(id));
   if (!task) return;
 
   task.status = 'done';
@@ -1293,7 +1535,7 @@ window.completeProjectTask = async function(id) {
 
 // Pause a task to pending (🟡)
 window.pauseProjectTask = async function(id) {
-  const task = projectTasksList.find(t => t.id === id);
+  const task = projectTasksList.find(t => String(t.id) === String(id));
   if (!task) return;
 
   task.status = 'pending';
@@ -1305,7 +1547,7 @@ window.pauseProjectTask = async function(id) {
 
 // Reset a task back to todo (🔴)
 window.resetProjectTask = async function(id) {
-  const task = projectTasksList.find(t => t.id === id);
+  const task = projectTasksList.find(t => String(t.id) === String(id));
   if (!task) return;
 
   task.status = 'todo';
@@ -1323,13 +1565,27 @@ window.toggleProjectTaskCheck = async function(id, isChecked) {
   }
 };
 
+// Subtask checkbox toggle (Epics dwukierunkowy sync)
+window.toggleProjectSubtaskCheck = async function(taskId, subtaskId, isChecked) {
+  const task = projectTasksList.find(t => String(t.id) === String(taskId));
+  if (!task || !task.subtasks) return;
+  const sub = task.subtasks.find(s => String(s.id) === String(subtaskId));
+  if (sub) {
+    sub.done = isChecked;
+    task.updatedAt = new Date().toISOString();
+    await saveProjectTasksToStorage();
+    renderProjectTasks();
+    showBannerNotification('Zaktualizowano krok w Epiku! ✅');
+  }
+};
+
 // Delete a task
 window.deleteProjectTask = async function(id) {
-  const task = projectTasksList.find(t => t.id === id);
+  const task = projectTasksList.find(t => String(t.id) === String(id));
   if (!task) return;
 
   if (confirm(`Na pewno usunąć zadanie:\n"${task.title}"?`)) {
-    projectTasksList = projectTasksList.filter(t => t.id !== id);
+    projectTasksList = projectTasksList.filter(t => String(t.id) !== String(id));
     await saveProjectTasksToStorage();
     renderProjectTasks();
     showBannerNotification('Usunięto zadanie.');

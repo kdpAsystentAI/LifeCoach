@@ -1,9 +1,9 @@
 /* ==========================================================================
-   LIFE COACH - SERVICE WORKER (Offline support - v28)
+   LIFE COACH - SERVICE WORKER (Offline support - v29)
    Zoptymalizowany pod niezawodną pracę offline (np. w magazynie).
    ========================================================================== */
 
-const CACHE_NAME = 'life-coach-cache-v28';
+const CACHE_NAME = 'life-coach-cache-v29';
 
 const LOCAL_ASSETS = [
   './',
@@ -28,12 +28,12 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(async (cache) => {
-        console.log('[SW v28] Caching local core assets...');
+        console.log('[SW v29] Caching local core assets...');
         // 1. Mandatory local assets
         await Promise.all(
           LOCAL_ASSETS.map(url => 
             cache.add(new Request(url, { cache: 'reload' })).catch(err => {
-              console.warn(`[SW v28] Failed to cache local asset: ${url}`, err);
+              console.warn(`[SW v29] Failed to cache local asset: ${url}`, err);
             })
           )
         );

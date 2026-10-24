@@ -24,7 +24,7 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="style.css?v=28">
+  <link rel="stylesheet" href="style.css?v=29">
 </head>
 <body>
 
@@ -36,7 +36,7 @@
       <div class="header-left">
         <h1 class="brand-title">Life Coach</h1>
         <p class="current-date" id="current-date-el">Wczytywanie...</p>
-        <span class="app-version" title="Wersja kodu aplikacji">v28</span>
+        <span class="app-version" title="Wersja kodu aplikacji">v29</span>
       </div>
       <div class="header-right">
         <!-- Streak Display -->
@@ -110,6 +110,29 @@
         </div>
         <div class="focus-card-actions" id="hero-task-actions">
           <!-- Dynamically populated buttons -->
+        </div>
+      </section>
+
+      <!-- Protokół Medyczny: Redukcja Dulsevii (Europe/Berlin 04:00) -->
+      <section class="medical-protocol-card" id="card-dulsevia-protocol">
+        <div class="medical-card-header">
+          <div class="medical-badge-wrap">
+            <span class="medical-badge">🩺 PROTOKÓŁ MEDYCZNY</span>
+            <span class="medical-schedule-tag" id="dulsevia-schedule-tag">Etap 3: Co 2 dni</span>
+          </div>
+          <span class="operational-day-badge" id="operational-day-badge" title="Doba operacyjna: reset codziennie o 04:00 Europe/Berlin">Doba: --</span>
+        </div>
+        <div class="medical-card-body">
+          <div class="medical-title-row">
+            <h4 class="medical-title">Redukcja Dulsevii (30 mg)</h4>
+            <span class="medical-status-badge" id="dulsevia-day-status">Sprawdzanie...</span>
+          </div>
+          <p class="medical-desc" id="dulsevia-desc">Oficjalne zalecenie lekarskie (Telemedi): wygaszanie co drugi dzień od 26.10.</p>
+        </div>
+        <div class="medical-card-actions" id="dulsevia-actions">
+          <button class="btn btn-sm btn-medical" id="btn-dulsevia-confirm" onclick="confirmDulseviaDose()">
+            <span class="material-symbols-outlined">medication</span> Potwierdź przyjęcie dawki (30 mg)
+          </button>
         </div>
       </section>
 
@@ -507,19 +530,19 @@
   </div>
 
   <!-- Scripts -->
-  <script src="app.js?v=28"></script>
-  <script src="gdrive.js?v=28"></script>
-  <script src="ai.js?v=28"></script>
+  <script src="app.js?v=29"></script>
+  <script src="gdrive.js?v=29"></script>
+  <script src="ai.js?v=29"></script>
   
   <script>
-    // Register Service Worker for PWA support (v28)
+    // Register Service Worker for PWA support (v29)
     if ('serviceWorker' in navigator) {
       let refreshing = false;
       // Auto-reload once new Service Worker activates and claims the client
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (!refreshing) {
           refreshing = true;
-          console.log('[SW v28] Controller changed, auto-refreshing for newest version...');
+          console.log('[SW v29] Controller changed, auto-refreshing for newest version...');
           window.location.reload();
         }
       });
@@ -527,7 +550,7 @@
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js')
           .then(reg => {
-            console.log('[SW v28] Zarejestrowany pomyślnie!', reg.scope);
+            console.log('[SW v29] Zarejestrowany pomyślnie!', reg.scope);
             // Check for service worker updates immediately
             reg.update().catch(() => {});
             reg.addEventListener('updatefound', () => {
@@ -535,14 +558,14 @@
               if (newWorker) {
                 newWorker.addEventListener('statechange', () => {
                   if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    console.log('[SW v28] Nowa wersja zainstalowana — gotowa do pracy offline.');
+                    console.log('[SW v29] Nowa wersja zainstalowana — gotowa do pracy offline.');
                   }
                 });
               }
             });
           })
           .catch(err => {
-            console.warn('[SW v28] Błąd rejestracji Service Workera (może wymagać HTTPS):', err);
+            console.warn('[SW v29] Błąd rejestracji Service Workera (może wymagać HTTPS):', err);
           });
       });
     }
