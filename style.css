@@ -1862,3 +1862,43 @@ body {
   border-radius: 4px;
 }
 
+
+/* Unified Health & Routines module */
+.protocol-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.protocol-divider {
+  border: 0;
+  border-top: 1px dashed rgba(16, 185, 129, 0.25);
+  margin: 12px 0;
+}
+
+.btn-routine {
+  background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+  color: #fff;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  padding: 8px 14px;
+  border-radius: var(--radius-md);
+  transition: all 0.2s;
+}
+
+.btn-routine:hover {
+  background: linear-gradient(135deg, #0369a1 0%, #075985 100%);
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+}
+
+.btn-routine:disabled {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  border-color: rgba(255, 255, 255, 0.1);
+  cursor: default;
+  box-shadow: none;
+}

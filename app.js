@@ -431,6 +431,72 @@ window.confirmDulseviaDose = async function() {
   showBannerNotification(`Zarejestrowano przyjęcie dawki Dulsevii na dobę ${todayOp}! 💊`);
 };
 
+// --- RUTYNA REGENERACYJNA (Europe/Berlin 04:00, trwały log w IndexedDB) ---
+async function getRegenerationHistory() {
+  try {
+    const pref = await dbGet('preferences', 'regeneration_history');
+    if (pref && pref.data) return pref.data;
+  } catch (e) {}
+  try {
+    const raw = localStorage.getItem('regeneration_history');
+    if (raw) return JSON.parse(raw);
+  } catch (e) {}
+  return {};
+}
+
+async function saveRegenerationHistory(history) {
+  try {
+    await dbPut('preferences', { key: 'regeneration_history', data: history });
+  } catch (e) {}
+  try {
+    localStorage.setItem('regeneration_history', JSON.stringify(history));
+  } catch (e) {}
+}
+
+async function updateRegenerationUI() {
+  const todayOp = getOperationalDate();
+  const statusBadge = document.getElementById('regeneration-day-status');
+  const confirmBtn = document.getElementById('btn-regeneration-confirm');
+  const history = await getRegenerationHistory();
+  const todayRecord = history[todayOp];
+
+  if (todayRecord && todayRecord.completed) {
+    if (statusBadge) {
+      statusBadge.className = 'medical-status-badge taken';
+      statusBadge.innerText = '✅ Wykonano dzisiaj';
+    }
+    if (confirmBtn) {
+      confirmBtn.disabled = true;
+      confirmBtn.innerHTML = `<span class="material-symbols-outlined">check</span> Rutyna zaliczona (${todayRecord.time || 'OK'})`;
+    }
+  } else {
+    if (statusBadge) {
+      statusBadge.className = 'medical-status-badge pill-day';
+      statusBadge.innerText = '⏳ Do zrobienia dzisiaj';
+    }
+    if (confirmBtn) {
+      confirmBtn.disabled = false;
+      confirmBtn.innerHTML = `<span class="material-symbols-outlined">fitness_center</span> Potwierdź wykonanie rutyny`;
+    }
+  }
+}
+
+window.confirmRegenerationRoutine = async function() {
+  const todayOp = getOperationalDate();
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Berlin' });
+  const history = await getRegenerationHistory();
+  history[todayOp] = {
+    completed: true,
+    timestamp: now.getTime(),
+    time: timeStr
+  };
+  await saveRegenerationHistory(history);
+  await updateRegenerationUI();
+  showBannerNotification(`Świetnie! Zarejestrowano regenerację (kolana + łopatki + lędźwie) na dobę ${todayOp}! 🧘`);
+};
+
+
 // --- STREAK & DATE ROLLOVER ENGINE ---
 async function checkDailyRollover() {
   const today = getTodayDateString();
@@ -1281,6 +1347,7 @@ function compareTasks4Step(a, b) {
 // 3. Render Project Tasks (Traffic light logic, 4-stopniowy komparator, Dulsevia & subtasks)
 function renderProjectTasks() {
   updateDulseviaUI();
+  updateRegenerationUI();
 
   const countAll = projectTasksList.length;
   const inProgressTasks = projectTasksList.filter(t => t.status === 'in_progress');

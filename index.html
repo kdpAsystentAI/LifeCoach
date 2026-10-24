@@ -36,7 +36,7 @@
       <div class="header-left">
         <h1 class="brand-title">Life Coach</h1>
         <p class="current-date" id="current-date-el">Wczytywanie...</p>
-        <span class="app-version" title="Wersja kodu aplikacji">v29</span>
+        <span class="app-version" title="Wersja kodu aplikacji">v30</span>
       </div>
       <div class="header-right">
         <!-- Streak Display -->
@@ -113,26 +113,50 @@
         </div>
       </section>
 
-      <!-- Protokół Medyczny: Redukcja Dulsevii (Europe/Berlin 04:00) -->
+      <!-- Zdrowie i Rutyny Codzienne (Reset: 04:00 rano Europe/Berlin) -->
       <section class="medical-protocol-card" id="card-dulsevia-protocol">
         <div class="medical-card-header">
           <div class="medical-badge-wrap">
-            <span class="medical-badge">🩺 PROTOKÓŁ MEDYCZNY</span>
-            <span class="medical-schedule-tag" id="dulsevia-schedule-tag">Etap 3: Co 2 dni</span>
+            <span class="medical-badge">🩺 ZDROWIE I RUTYNY CODZIENNE</span>
+            <span class="medical-schedule-tag" id="dulsevia-schedule-tag">Reset: 04:00 rano</span>
           </div>
           <span class="operational-day-badge" id="operational-day-badge" title="Doba operacyjna: reset codziennie o 04:00 Europe/Berlin">Doba: --</span>
         </div>
-        <div class="medical-card-body">
-          <div class="medical-title-row">
-            <h4 class="medical-title">Redukcja Dulsevii (30 mg)</h4>
-            <span class="medical-status-badge" id="dulsevia-day-status">Sprawdzanie...</span>
+
+        <!-- 1. Protokół Dulsevii -->
+        <div class="protocol-item" id="item-dulsevia">
+          <div class="medical-card-body">
+            <div class="medical-title-row">
+              <h4 class="medical-title">💊 Redukcja Dulsevii (30 mg)</h4>
+              <span class="medical-status-badge" id="dulsevia-day-status">Sprawdzanie...</span>
+            </div>
+            <p class="medical-desc" id="dulsevia-desc">Oficjalne zalecenie lekarskie (Telemedi): wygaszanie co drugi dzień od 26.10.</p>
           </div>
-          <p class="medical-desc" id="dulsevia-desc">Oficjalne zalecenie lekarskie (Telemedi): wygaszanie co drugi dzień od 26.10.</p>
+          <div class="medical-card-actions" id="dulsevia-actions">
+            <button class="btn btn-sm btn-medical" id="btn-dulsevia-confirm" onclick="confirmDulseviaDose()">
+              <span class="material-symbols-outlined">medication</span> Potwierdź przyjęcie dawki (30 mg)
+            </button>
+          </div>
         </div>
-        <div class="medical-card-actions" id="dulsevia-actions">
-          <button class="btn btn-sm btn-medical" id="btn-dulsevia-confirm" onclick="confirmDulseviaDose()">
-            <span class="material-symbols-outlined">medication</span> Potwierdź przyjęcie dawki (30 mg)
-          </button>
+
+        <hr class="protocol-divider">
+
+        <!-- 2. Rutyna Regeneracyjna na kwaterze -->
+        <div class="protocol-item" id="item-regeneration">
+          <div class="medical-card-body">
+            <div class="medical-title-row">
+              <h4 class="medical-title">🧘 Regeneracja na kwaterze (kolana + łopatki + lędźwie)</h4>
+              <span class="medical-status-badge" id="regeneration-day-status">Sprawdzanie...</span>
+            </div>
+            <p class="medical-desc" id="regeneration-desc">
+              <strong>Zestaw ATG/KOT:</strong> Tibialis raises (w butach o ścianę) • Wall sit • Couch stretch • Band pull-apart • Dead Bug (lędźwie).
+            </p>
+          </div>
+          <div class="medical-card-actions" id="regeneration-actions">
+            <button class="btn btn-sm btn-routine" id="btn-regeneration-confirm" onclick="confirmRegenerationRoutine()">
+              <span class="material-symbols-outlined">fitness_center</span> Potwierdź wykonanie rutyny
+            </button>
+          </div>
         </div>
       </section>
 
@@ -535,14 +559,14 @@
   <script src="ai.js?v=29"></script>
   
   <script>
-    // Register Service Worker for PWA support (v29)
+    // Register Service Worker for PWA support (v30)
     if ('serviceWorker' in navigator) {
       let refreshing = false;
       // Auto-reload once new Service Worker activates and claims the client
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (!refreshing) {
           refreshing = true;
-          console.log('[SW v29] Controller changed, auto-refreshing for newest version...');
+          console.log('[SW v30] Controller changed, auto-refreshing for newest version...');
           window.location.reload();
         }
       });
@@ -550,7 +574,7 @@
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js')
           .then(reg => {
-            console.log('[SW v29] Zarejestrowany pomyślnie!', reg.scope);
+            console.log('[SW v30] Zarejestrowany pomyślnie!', reg.scope);
             // Check for service worker updates immediately
             reg.update().catch(() => {});
             reg.addEventListener('updatefound', () => {
@@ -558,14 +582,14 @@
               if (newWorker) {
                 newWorker.addEventListener('statechange', () => {
                   if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    console.log('[SW v29] Nowa wersja zainstalowana — gotowa do pracy offline.');
+                    console.log('[SW v30] Nowa wersja zainstalowana — gotowa do pracy offline.');
                   }
                 });
               }
             });
           })
           .catch(err => {
-            console.warn('[SW v29] Błąd rejestracji Service Workera (może wymagać HTTPS):', err);
+            console.warn('[SW v30] Błąd rejestracji Service Workera (może wymagać HTTPS):', err);
           });
       });
     }
