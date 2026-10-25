@@ -1071,6 +1071,7 @@ function formatTaskMarkdown(text) {
   return escaped
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
     .replace(/^\s*-\s+(.*)$/gm, '&bull; $1');
 }
 
@@ -1151,6 +1152,69 @@ async function pushTasksToServer() {
       // 409 Conflict: Server file changed!
       const errData = await response.json().catch(() => ({}));
       console.warn('[SYNC 409] Version conflict detected:', errData);
+      
+      // Smart non-destructive merge: re-fetch latest from server and reapply our local task statuses
+      try {
+        const getResp = await fetch('/api/tasks');
+        if (getResp.ok) {
+          const freshData = await getResp.json();
+          if (freshData && Array.isArray(freshData.tasks)) {
+            const localMap = new Map();
+            for (const t of projectTasksList) {
+              if (t && t.id) {
+                localMap.set(String(t.id), { status: t.status, completedAt: t.completedAt, subtasks: t.subtasks });
+              }
+            }
+            for (const ft of freshData.tasks) {
+              const local = localMap.get(String(ft.id));
+              if (local) {
+                if (local.status && local.status !== 'todo') {
+                  ft.status = local.status;
+                  ft.completedAt = local.completedAt;
+                }
+                if (local.subtasks && Array.isArray(ft.subtasks)) {
+                  for (const fst of ft.subtasks) {
+                    const lst = local.subtasks.find(s => String(s.id) === String(fst.id));
+                    if (lst && typeof lst.done === 'boolean') {
+                      fst.done = lst.done;
+                    }
+                  }
+                }
+              }
+            }
+            projectTasksList = freshData.tasks;
+            currentSourceRevision = freshData.source_revision || errData.server_revision || '';
+            localStorage.setItem('tasks_source_revision', currentSourceRevision);
+            await saveProjectTasksToStorage(false);
+            renderProjectTasks();
+            
+            // Retry push with the fresh revision!
+            const retryResp = await fetch('/api/tasks/save', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                tasks: projectTasksList,
+                source_revision: currentSourceRevision
+              })
+            });
+            if (retryResp.ok) {
+              const retryData = await retryResp.json().catch(() => ({}));
+              if (retryData.source_revision) {
+                currentSourceRevision = retryData.source_revision;
+                localStorage.setItem('tasks_source_revision', currentSourceRevision);
+              }
+              hasPendingTasksSync = false;
+              localStorage.setItem('tasks_pending_sync', 'false');
+              updateSyncStatusUIBadge(true, 'Zsynchronizowano po scaleniu wersji ✅');
+              showBannerNotification('Zsynchronizowano i scalono zadania z serwerem! ✅');
+              return;
+            }
+          }
+        }
+      } catch (mergeErr) {
+        console.warn('[SYNC 409] Merge failed:', mergeErr);
+      }
+      
       showBannerNotification('Wykryto konflikt wersji na serwerze! Pobieranie najnowszych zadań... ⚠️');
       updateSyncStatusUIBadge(false, 'Konflikt wersji (Pobieranie...) ⚠️');
       await syncTasksWithServer(true);
