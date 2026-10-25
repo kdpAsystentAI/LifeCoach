@@ -42,11 +42,9 @@ python server.py
 Aplikacja dostępna pod adresem: `http://localhost:8080` (lub `http://IP_KOMPUTERA:8080`).
 
 ### 2. Dostęp mobilny i PWA Offline
-- Aby Service Worker zainstalował się poprawnie na telefonie, zalecane jest korzystanie z:
-  1. **HTTPS** (np. przez certyfikat lokalny / Tailscale Serve).
-  2. **GitHub Pages:** `https://kdpasystentai.github.io/LifeCoach/`
-  3. Lub włączenie w Chrome na telefonie flagi: `chrome://flags/#unsafely-treat-insecure-origin-as-secure` dla adresu IP twojego serwera.
-- Po jednorazowym otwarciu w przeglądarce i dodaniu do ekranu głównego ("Zainstaluj aplikację" / "Dodaj do ekranu głównego"), aplikacja otwiera się i działa w pełni **OFFLINE w magazynie**.
+- Serwis działa wyłącznie w prywatnej sieci **Tailscale VPN** (Homelab Pop!_OS pod adresem `100.95.73.1:8080` lub PC).
+- Hosting publiczny **GitHub Pages został wygaszony** zgodnie z decyzją o 100% prywatności.
+- Po dodaniu do ekranu głównego w przeglądarce, aplikacja działa w pełni **OFFLINE w magazynie**.
 
 ---
 
