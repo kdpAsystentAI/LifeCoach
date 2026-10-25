@@ -3,7 +3,7 @@
    Zoptymalizowany pod niezawodną pracę offline (np. w magazynie).
    ========================================================================== */
 
-const CACHE_NAME = 'life-coach-cache-v31';
+const CACHE_NAME = 'life-coach-cache-v32';
 
 const LOCAL_ASSETS = [
   './',

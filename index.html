@@ -24,7 +24,7 @@
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   
   <!-- Stylesheets -->
-  <link rel="stylesheet" href="style.css?v=31">
+  <link rel="stylesheet" href="style.css?v=32">
 </head>
 <body>
 
@@ -554,19 +554,19 @@
   </div>
 
   <!-- Scripts -->
-  <script src="app.js?v=31"></script>
-  <script src="gdrive.js?v=31"></script>
-  <script src="ai.js?v=31"></script>
+  <script src="app.js?v=32"></script>
+  <script src="gdrive.js?v=32"></script>
+  <script src="ai.js?v=32"></script>
   
   <script>
-    // Register Service Worker for PWA support (v31)
+    // Register Service Worker for PWA support (v32)
     if ('serviceWorker' in navigator) {
       let refreshing = false;
       // Auto-reload once new Service Worker activates and claims the client
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (!refreshing) {
           refreshing = true;
-          console.log('[SW v31] Controller changed, auto-refreshing for newest version...');
+          console.log('[SW v32] Controller changed, auto-refreshing for newest version...');
           window.location.reload();
         }
       });
@@ -574,7 +574,7 @@
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('sw.js')
           .then(reg => {
-            console.log('[SW v31] Zarejestrowany pomyślnie!', reg.scope);
+            console.log('[SW v32] Zarejestrowany pomyślnie!', reg.scope);
             // Check for service worker updates immediately
             reg.update().catch(() => {});
             reg.addEventListener('updatefound', () => {
@@ -582,14 +582,14 @@
               if (newWorker) {
                 newWorker.addEventListener('statechange', () => {
                   if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                    console.log('[SW v31] Nowa wersja zainstalowana — gotowa do pracy offline.');
+                    console.log('[SW v32] Nowa wersja zainstalowana — gotowa do pracy offline.');
                   }
                 });
               }
             });
           })
           .catch(err => {
-            console.warn('[SW v31] Błąd rejestracji Service Workera (może wymagać HTTPS):', err);
+            console.warn('[SW v32] Błąd rejestracji Service Workera (może wymagać HTTPS):', err);
           });
       });
     }

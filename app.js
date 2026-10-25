@@ -112,44 +112,64 @@ function initDB() {
 // Read data helper
 function dbGet(storeName, key) {
   return new Promise((resolve) => {
-    const transaction = db.transaction([storeName], 'readonly');
-    const store = transaction.objectStore(storeName);
-    const request = store.get(key);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => resolve(null);
+    if (!db) return resolve(null);
+    try {
+      const transaction = db.transaction([storeName], 'readonly');
+      const store = transaction.objectStore(storeName);
+      const request = store.get(key);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => resolve(null);
+    } catch (e) {
+      resolve(null);
+    }
   });
 }
 
 // Write data helper
 function dbPut(storeName, data) {
   return new Promise((resolve, reject) => {
-    const transaction = db.transaction([storeName], 'readwrite');
-    const store = transaction.objectStore(storeName);
-    const request = store.put(data);
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    if (!db) return resolve(data);
+    try {
+      const transaction = db.transaction([storeName], 'readwrite');
+      const store = transaction.objectStore(storeName);
+      const request = store.put(data);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    } catch (e) {
+      resolve(data);
+    }
   });
 }
 
 // Get all items in store helper
 function dbGetAll(storeName) {
   return new Promise((resolve) => {
-    const transaction = db.transaction([storeName], 'readonly');
-    const store = transaction.objectStore(storeName);
-    const request = store.getAll();
-    request.onsuccess = () => resolve(request.result || []);
-    request.onerror = () => resolve([]);
+    if (!db) return resolve([]);
+    try {
+      const transaction = db.transaction([storeName], 'readonly');
+      const store = transaction.objectStore(storeName);
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = () => resolve([]);
+    } catch (e) {
+      resolve([]);
+    }
   });
 }
 
 // Delete item helper
 function dbDelete(storeName, key) {
   return new Promise((resolve) => {
-    const transaction = db.transaction([storeName], 'readwrite');
-    const store = transaction.objectStore(storeName);
-    const request = store.delete(key);
-    request.onsuccess = () => resolve(true);
-    request.onerror = () => resolve(false);
+    if (!db) return resolve(true);
+    try {
+      const transaction = db.transaction([storeName], 'readwrite');
+      const store = transaction.objectStore(storeName);
+      const request = store.delete(key);
+      request.onsuccess = () => resolve(true);
+      request.onerror = () => resolve(false);
+    } catch (e) {
+      resolve(false);
+    }
   });
 }
 
@@ -1135,9 +1155,14 @@ async function saveProjectTasksToStorage(triggerServerPush = true) {
 
 let currentSourceRevision = localStorage.getItem('tasks_source_revision') || '';
 let hasPendingTasksSync = localStorage.getItem('tasks_pending_sync') === 'true';
+let isPushingTasks = false;
+let isPullingTasks = false;
 
 // Push tasks to server endpoint /api/tasks/save (with source_revision & conflict 409 handling)
 async function pushTasksToServer() {
+  if (isPushingTasks) return;
+  isPushingTasks = true;
+
   try {
     const response = await fetch('/api/tasks/save', {
       method: 'POST',
@@ -1162,15 +1187,22 @@ async function pushTasksToServer() {
             const localMap = new Map();
             for (const t of projectTasksList) {
               if (t && t.id) {
-                localMap.set(String(t.id), { status: t.status, completedAt: t.completedAt, subtasks: t.subtasks });
+                localMap.set(String(t.id), {
+                  status: t.status,
+                  completedAt: t.completedAt,
+                  updatedAt: t.updatedAt,
+                  subtasks: t.subtasks
+                });
               }
             }
             for (const ft of freshData.tasks) {
               const local = localMap.get(String(ft.id));
               if (local) {
-                if (local.status && local.status !== 'todo') {
+                // Preserve user's local status choice for all tasks (including resetting to todo)
+                if (local.status) {
                   ft.status = local.status;
                   ft.completedAt = local.completedAt;
+                  ft.updatedAt = local.updatedAt;
                 }
                 if (local.subtasks && Array.isArray(ft.subtasks)) {
                   for (const fst of ft.subtasks) {
@@ -1217,7 +1249,7 @@ async function pushTasksToServer() {
       
       showBannerNotification('Wykryto konflikt wersji na serwerze! Pobieranie najnowszych zadań... ⚠️');
       updateSyncStatusUIBadge(false, 'Konflikt wersji (Pobieranie...) ⚠️');
-      await syncTasksWithServer(true);
+      await syncTasksWithServer(true, true);
       return;
     }
 
@@ -1239,15 +1271,25 @@ async function pushTasksToServer() {
     hasPendingTasksSync = true;
     localStorage.setItem('tasks_pending_sync', 'true');
     updateSyncStatusUIBadge(false, 'Lokalnie (Offline Gotowe ⏳)');
+  } finally {
+    isPushingTasks = false;
   }
 }
 
 // Sync tasks from server endpoint /api/tasks (with tasks.json fallback for static hosting/GitHub Pages)
-async function syncTasksWithServer(silent = false) {
-  // If there are unpushed local changes, push them first before pulling
-  if (hasPendingTasksSync) {
-    await pushTasksToServer();
-    if (hasPendingTasksSync) {
+async function syncTasksWithServer(silent = false, forcePull = false) {
+  if (isPullingTasks) return false;
+  isPullingTasks = true;
+
+  try {
+    // If there are unpushed local changes, push them first before pulling (unless forcePull requested)
+    if (hasPendingTasksSync && !forcePull) {
+      await pushTasksToServer();
+      if (hasPendingTasksSync) {
+        // Push still failed (e.g. offline)
+        return false;
+      }
+    }
       // Push still failed (e.g. offline)
       return false;
     }
@@ -1345,6 +1387,9 @@ async function syncTasksWithServer(silent = false) {
     showBannerNotification('Tryb Offline — używasz lokalnej bazy zadań. 📴');
   }
   return false;
+  } finally {
+    isPullingTasks = false;
+  }
 }
 
 // Auto-flush pending sync when device comes back online
@@ -1645,9 +1690,14 @@ window.startProjectTask = async function(id) {
 
   task.status = 'in_progress';
   task.updatedAt = new Date().toISOString();
-  await saveProjectTasksToStorage();
   renderProjectTasks();
   showBannerNotification(`Zadanie aktywne (🔵): ${task.title}`);
+
+  try {
+    await saveProjectTasksToStorage();
+  } catch (err) {
+    console.warn('Błąd zapisu zadania:', err);
+  }
 };
 
 // Complete a task
@@ -1657,11 +1707,24 @@ window.completeProjectTask = async function(id) {
 
   task.status = 'done';
   task.completedAt = new Date().toISOString();
-  playSuccessSound();
-  await evaluateStreakProgress();
-  await saveProjectTasksToStorage();
+  task.updatedAt = new Date().toISOString();
+  
+  // Instant visual feedback for user
   renderProjectTasks();
+  playSuccessSound();
   showBannerNotification(`Ukończono zadanie (🟢)! Świetna robota.`);
+
+  try {
+    await evaluateStreakProgress();
+  } catch (streakErr) {
+    console.warn('Błąd oceny streaka:', streakErr);
+  }
+
+  try {
+    await saveProjectTasksToStorage();
+  } catch (saveErr) {
+    console.warn('Błąd zapisu ukończonego zadania:', saveErr);
+  }
 };
 
 // Pause a task to pending (🟡)
@@ -1671,9 +1734,14 @@ window.pauseProjectTask = async function(id) {
 
   task.status = 'pending';
   task.updatedAt = new Date().toISOString();
-  await saveProjectTasksToStorage();
   renderProjectTasks();
   showBannerNotification(`Zadanie wstrzymane (🟡 Oczekuje).`);
+
+  try {
+    await saveProjectTasksToStorage();
+  } catch (err) {
+    console.warn('Błąd zapisu wstrzymanego zadania:', err);
+  }
 };
 
 // Reset a task back to todo (🔴)
@@ -1683,8 +1751,20 @@ window.resetProjectTask = async function(id) {
 
   task.status = 'todo';
   task.updatedAt = new Date().toISOString();
-  await saveProjectTasksToStorage();
   renderProjectTasks();
+  showBannerNotification(`Przywrócono zadanie (🔴 Do zrobienia).`);
+
+  try {
+    await evaluateStreakProgress();
+  } catch (streakErr) {
+    console.warn('Błąd oceny streaka:', streakErr);
+  }
+
+  try {
+    await saveProjectTasksToStorage();
+  } catch (saveErr) {
+    console.warn('Błąd zapisu przywróconego zadania:', saveErr);
+  }
 };
 
 // Checkbox toggle
